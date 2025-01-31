@@ -7,11 +7,6 @@ namespace utf8_scanner {
 
 constexpr bool IsAscii(std::uint8_t byte) noexcept {
   // 0xxxxxxx, 0x00 ~ 0x7f
-  return byte < 0x80;
-}
-
-constexpr bool IsAscii2(std::uint8_t byte) noexcept {
-  // 0xxxxxxx, 0x00 ~ 0x7f
   return (byte & 0b10000000) == 0b00000000;
 }
 
