@@ -1,164 +1,341 @@
 #ifndef UTF8_SCANNER_UTF8_SCANNER_H_
 #define UTF8_SCANNER_UTF8_SCANNER_H_
 
-#include <array>
+#include <cassert>
 #include <cstdint>
 #include <istream>
-#include <optional>
 #include <variant>
+#include <vector>
 
 namespace utf8_scanner {
 
-enum class Error {
-  kStreamIsNotGood,
-  kStreamIsEof,
-  kStreamIsBad,
-  kStreamIsFail,
-};
-
 using Byte = std::uint8_t;
-using TwoByteSequence = std::array<Byte, 2>;
-using ThreeByteSequence = std::array<Byte, 3>;
-using FourByteSequence = std::array<Byte, 4>;
 using CodePoint = std::uint32_t;
 
-namespace detail {
-
-constexpr std::optional<Error> CheckAfterOp(std::istream& stream) noexcept {
-  if (stream.eof()) {
-    return Error::kStreamIsEof;
-  }
-
-  if (stream.bad()) {
-    return Error::kStreamIsBad;
-  }
-
-  if (stream.fail()) {
-    return Error::kStreamIsFail;
-  }
-
-  return std::nullopt;
-}
-
-constexpr std::variant<Byte, Error> ReadByte(std::istream& stream) noexcept {
-  if (!stream.good()) {
-    return Error::kStreamIsNotGood;
-  }
-
-  char byte{};
-  stream.get(byte);
-  if (auto err = CheckAfterOp(stream); err) {
-    return *err;
-  }
-
-  return static_cast<Byte>(byte);
-}
-
-constexpr std::variant<Byte, Error> PeekByte(std::istream& stream) noexcept {
-  if (!stream.good()) {
-    return Error::kStreamIsNotGood;
-  }
-
-  auto byte = stream.peek();
-  if (auto err = CheckAfterOp(stream); err) {
-    return *err;
-  }
-
-  return static_cast<Byte>(byte);
-}
-
-}  // namespace detail
-
 // Range: 0x00 ~ 0x7f
-constexpr bool IsAscii(Byte byte) noexcept {
-  return (byte & 0b10000000) == 0b00000000;
+constexpr bool IsAscii(const Byte b) noexcept {
+  return (b & 0b10000000) == 0b00000000;
 }
 
 // Range: 0xc2 ~ 0xdf
 // 0xc0, 0xc1 are disallowed in UTF-8.
-constexpr bool IsStartOf2ByteSequence(Byte byte) noexcept {
-  return (byte & 0b11100000) == 0b11000000 && 0xc2 <= byte;
+constexpr bool IsStartOf2Byte(const Byte b) noexcept {
+  return (b & 0b11100000) == 0b11000000 && 0xc2 <= b;
 }
 
 // Range: 0xe0 ~ 0xef
-constexpr bool IsStartOf3ByteSequence(Byte byte) noexcept {
-  return (byte & 0b11110000) == 0b11100000;
+constexpr bool IsStartOf3Byte(const Byte b) noexcept {
+  return (b & 0b11110000) == 0b11100000;
 }
 
 // Range: 0xf0 ~ 0xf4
 // 0xf5 ~ 0xff are disallowed in UTF-8.
-constexpr bool IsStartOf4ByteSequence(Byte byte) noexcept {
-  return (byte & 0b11111000) == 0b11110000 && byte <= 0xf4;
+constexpr bool IsStartOf4Byte(const Byte b) noexcept {
+  return (b & 0b11111000) == 0b11110000 && b <= 0xf4;
 }
 
 // Range: 0x80 ~ 0xbf
 // A continuation byte at the start of a character is invalid.
 // A non-continuation byte before the end of a character is invalid.
-constexpr bool IsContinuationByte(Byte byte) noexcept {
-  return (byte & 0b11000000) == 0b10000000;
+constexpr bool IsContinuation(const Byte b) noexcept {
+  return (b & 0b11000000) == 0b10000000;
 }
 
-constexpr bool Is3ByteOverlongEncoding(Byte b0, Byte b1) noexcept {
+constexpr bool IsOverlong3Byte(const Byte b0, const Byte b1) noexcept {
   return b0 == 0xe0 && b1 < 0xa0;
 }
 
-constexpr bool Is4ByteOverlongEncoding(Byte b0, Byte b1) noexcept {
-  return b0 == 0xf0 && b1 < 0x90;
-}
-
-constexpr bool Is4ByteOutOfUnicodeRange(Byte b0, Byte b1) noexcept {
-  return b0 == 0xf4 && 0x90 <= b1;
-}
-
-constexpr bool Is3ByteUtf16Surrogate(Byte b0, Byte b1) noexcept {
+constexpr bool IsUtf16Surrogate(const Byte b0, const Byte b1) noexcept {
   return b0 == 0xed && 0xa0 <= b1;
 }
 
-constexpr CodePoint CodePointFromAscii(Byte byte) noexcept { return byte; }
+constexpr bool IsOverlong4Byte(const Byte b0, const Byte b1) noexcept {
+  return b0 == 0xf0 && b1 < 0x90;
+}
 
-constexpr CodePoint CodePointFrom2ByteSequence(Byte b0, Byte b1) noexcept {
+constexpr bool IsOutOfUnicodeRange(const Byte b0, const Byte b1) noexcept {
+  return b0 == 0xf4 && 0x90 <= b1;
+}
+
+constexpr CodePoint CodePointFromAscii(const Byte b) noexcept {
+  assert(IsAscii(b) && "Parameter `b` must be ASCII.");
+  return b;
+}
+
+constexpr CodePoint CodePointFrom2Byte(const Byte b0, const Byte b1) noexcept {
+  assert(IsStartOf2Byte(b0) &&
+         "Parameter `b0` must be the start of a 2-byte UTF-8 character.");
+  assert(IsContinuation(b1) && "Parameter `b1` must be a continuation byte.");
   return (b0 & 0b00011111) << 6 | (b1 & 0b00111111);
 }
 
-constexpr CodePoint CodePointFrom3ByteSequence(Byte b0, Byte b1,
-                                               Byte b2) noexcept {
+constexpr CodePoint CodePointFrom3Byte(const Byte b0, const Byte b1,
+                                       const Byte b2) noexcept {
+  assert(IsStartOf3Byte(b0) &&
+         "Parameter `b0` must be the start of a 3-byte UTF-8 character.");
+  assert(!IsOverlong3Byte(b0, b1) &&
+         "Parameter `b0` and `b1` must not form an overlong 3-byte UTF-8 "
+         "character.");
+  assert(!IsUtf16Surrogate(b0, b1) &&
+         "Parameter `b0` and `b1` must not form a UTF-16 surrogate.");
+  assert(IsContinuation(b1) && "Parameter `b1` must be a continuation byte.");
+  assert(IsContinuation(b2) && "Parameter `b2` must be a continuation byte.");
   return (b0 & 0b00001111) << 12 | (b1 & 0b00111111) << 6 | (b2 & 0b00111111);
 }
 
-constexpr CodePoint CodePointFrom4ByteSequence(Byte b0, Byte b1, Byte b2,
-                                               Byte b3) noexcept {
+constexpr CodePoint CodePointFrom4Byte(const Byte b0, const Byte b1,
+                                       const Byte b2, const Byte b3) noexcept {
+  assert(IsStartOf4Byte(b0) &&
+         "Parameter `b0` must be the start of a 4-byte UTF-8 character.");
+  assert(!IsOverlong4Byte(b0, b1) &&
+         "Parameter `b0` and `b1` must not form an overlong 4-byte UTF-8 "
+         "character.");
+  assert(!IsOutOfUnicodeRange(b0, b1) &&
+         "Parameter `b0` and `b1` must not form a character out of "
+         "Unicode range.");
+  assert(IsContinuation(b1) && "Parameter `b1` must be a continuation byte.");
+  assert(IsContinuation(b2) && "Parameter `b2` must be a continuation byte.");
+  assert(IsContinuation(b3) && "Parameter `b3` must be a continuation byte.");
   return (b0 & 0b00000111) << 18 | (b1 & 0b00111111) << 12 |
          (b2 & 0b00111111) << 6 | (b3 & 0b00111111);
 }
 
-constexpr std::variant<Byte, TwoByteSequence, ThreeByteSequence,
-                       FourByteSequence, Error>
-Scan(std::istream& stream, Byte first_byte) noexcept {
-  if (IsAscii(first_byte)) {
-    return first_byte;
+constexpr CodePoint CodePointFromBytes(const Byte* bytes,
+                                       const std::size_t length) noexcept {
+  assert(bytes != nullptr && "Parameter `bytes` must not be nullptr.");
+  assert(length > 0 && "Parameter `length` must be greater than 0.");
+  assert(length <= 4 && "Parameter `length` must be less than or equal to 4.");
+  switch (length) {
+    case 1:
+      return CodePointFromAscii(bytes[0]);
+    case 2:
+      return CodePointFrom2Byte(bytes[0], bytes[1]);
+    case 3:
+      return CodePointFrom3Byte(bytes[0], bytes[1], bytes[2]);
+    case 4:
+      return CodePointFrom4Byte(bytes[0], bytes[1], bytes[2], bytes[3]);
+    default:
+      assert(false && "Parameter `length` must be 1, 2, 3, or 4.");
+      return 0;
   }
-
-  if (IsStartOf2ByteSequence(first_byte)) {
-    auto&& b1 = detail::PeekByte(stream);
-    if (std::holds_alternative<Error>(b1)) {
-      return std::get<Error>(b1);
-    }
-
-    return TwoByteSequence{first_byte, std::get<Byte>(b1)};
-  }
-
-  return Error::kStreamIsBad;
 }
 
-constexpr std::variant<Byte, TwoByteSequence, ThreeByteSequence,
-                       FourByteSequence, Error>
-Scan(std::istream& stream) noexcept {
-  auto b0 = detail::ReadByte(stream);
-  if (std::holds_alternative<Error>(b0)) {
-    return std::get<Error>(b0);
+enum class ResultCode : std::uint8_t {
+  kValidCodePoint,
+  kDisallowedStartByte,
+  kStartWithContinuationByte,
+  kIncomplete2Byte,
+  kIncomplete3Byte,
+  kIncomplete4Byte,
+  kOverlong3Byte,
+  kOverlong4Byte,
+  kUtf16Surrogate,
+  kOutOfUnicodeRange,
+  kStreamEof,
+  kStreamBad,
+  kStreamFail,
+  kStreamUnexpected,
+};
+
+using EncodedCodePoint = std::vector<Byte>;
+
+class Scanner {
+ public:
+  explicit Scanner(std::istream& stream, EncodedCodePoint& buffer) noexcept
+      : stream_(stream), buffer_(buffer) {
+    buffer_.clear();
   }
 
-  return Scan(stream, std::get<Byte>(b0));
+  ~Scanner() noexcept = default;
+
+  Scanner(const Scanner&) = delete;
+  Scanner& operator=(const Scanner&) = delete;
+
+  Scanner(Scanner&&) = delete;
+  Scanner& operator=(Scanner&&) = delete;
+
+  ResultCode Scan() noexcept {
+    const PeekResult maybe_b0 = Peek();
+    if (!HasValue(maybe_b0)) {
+      return GetError(maybe_b0);
+    }
+
+    const Byte b0 = GetValue(maybe_b0);
+    Consume(b0);
+
+    if (IsAscii(b0)) {
+      return ResultCode::kValidCodePoint;
+    }
+
+    if (IsStartOf2Byte(b0)) {
+      return OnStartOf2Byte(b0);
+    }
+
+    if (IsStartOf3Byte(b0)) {
+      return OnStartOf3Byte(b0);
+    }
+
+    if (IsStartOf4Byte(b0)) {
+      return OnStartOf4Byte(b0);
+    }
+
+    if (IsContinuation(b0)) {
+      return ResultCode::kStartWithContinuationByte;
+    }
+
+    return ResultCode::kDisallowedStartByte;
+  }
+
+ private:
+  ResultCode OnStartOf2Byte(const Byte b0) noexcept {
+    const PeekResult maybe_b1 = Peek();
+    if (!HasValue(maybe_b1)) {
+      return GetError(maybe_b1);
+    }
+
+    const Byte b1 = GetValue(maybe_b1);
+    if (IsContinuation(b1)) {
+      Consume(b1);
+      return ResultCode::kValidCodePoint;
+    }
+
+    return ResultCode::kIncomplete2Byte;
+  }
+
+  ResultCode OnStartOf3Byte(const Byte b0) noexcept {
+    const PeekResult maybe_b1 = Peek();
+    if (!HasValue(maybe_b1)) {
+      return GetError(maybe_b1);
+    }
+
+    const Byte b1 = GetValue(maybe_b1);
+    if (IsOverlong3Byte(b0, b1)) {
+      Consume(b1);
+      return ResultCode::kOverlong3Byte;
+    }
+
+    if (IsUtf16Surrogate(b0, b1)) {
+      Consume(b1);
+      return ResultCode::kUtf16Surrogate;
+    }
+
+    if (IsContinuation(b1)) {
+      Consume(b1);
+
+      const PeekResult maybe_b2 = Peek();
+      if (!HasValue(maybe_b2)) {
+        return GetError(maybe_b2);
+      }
+
+      const Byte b2 = GetValue(maybe_b2);
+      if (IsContinuation(b2)) {
+        Consume(b2);
+        return ResultCode::kValidCodePoint;
+      }
+    }
+
+    return ResultCode::kIncomplete3Byte;
+  }
+
+  ResultCode OnStartOf4Byte(const Byte b0) noexcept {
+    const PeekResult maybe_b1 = Peek();
+    if (!HasValue(maybe_b1)) {
+      return GetError(maybe_b1);
+    }
+
+    const Byte b1 = GetValue(maybe_b1);
+    if (IsOverlong4Byte(b0, b1)) {
+      Consume(b1);
+      return ResultCode::kOverlong4Byte;
+    }
+
+    if (IsOutOfUnicodeRange(b0, b1)) {
+      Consume(b1);
+      return ResultCode::kOutOfUnicodeRange;
+    }
+
+    if (IsContinuation(b1)) {
+      Consume(b1);
+
+      const PeekResult maybe_b2 = Peek();
+      if (!HasValue(maybe_b2)) {
+        return GetError(maybe_b2);
+      }
+
+      const Byte b2 = GetValue(maybe_b2);
+      if (IsContinuation(b2)) {
+        Consume(b2);
+
+        const PeekResult maybe_b3 = Peek();
+        if (!HasValue(maybe_b3)) {
+          return GetError(maybe_b3);
+        }
+
+        const Byte b3 = GetValue(maybe_b3);
+        if (IsContinuation(b3)) {
+          Consume(b3);
+          return ResultCode::kValidCodePoint;
+        }
+      }
+    }
+
+    return ResultCode::kIncomplete4Byte;
+  }
+
+  using PeekValue = std::istream::int_type;
+  using PeekResult = std::variant<PeekValue, ResultCode>;
+
+  bool HasValue(const PeekResult& res) noexcept {
+    return std::holds_alternative<PeekValue>(res);
+  }
+
+  Byte GetValue(const PeekResult& res) noexcept {
+    return static_cast<Byte>(std::get<PeekValue>(res));
+  }
+
+  ResultCode GetError(const PeekResult& res) noexcept {
+    return std::get<ResultCode>(res);
+  }
+
+  PeekResult Peek() noexcept {
+    if (stream_.good()) {
+      PeekValue v = stream_.peek();
+      if (stream_.good()) {
+        return v;
+      }
+    }
+
+    if (stream_.eof()) {
+      return ResultCode::kStreamEof;
+    }
+
+    if (stream_.bad()) {
+      return ResultCode::kStreamBad;
+    }
+
+    if (stream_.fail()) {
+      return ResultCode::kStreamFail;
+    }
+
+    return ResultCode::kStreamUnexpected;
+  }
+
+  void Consume(const Byte byte) noexcept {
+    assert(stream_.good() && "Member `stream_` must be good before consuming.");
+    PeekValue v = stream_.get();
+    assert(stream_.good() && "Member `stream_` must be good after consuming.");
+    assert(static_cast<Byte>(v) == byte &&
+           "Consumed byte must be same as the peeked byte.");
+    buffer_.emplace_back(byte);
+  }
+
+  std::istream& stream_;
+  EncodedCodePoint& buffer_;
+};
+
+inline ResultCode Scan(std::istream& stream,
+                       EncodedCodePoint& buffer) noexcept {
+  return Scanner(stream, buffer).Scan();
 }
 
 }  // namespace utf8_scanner
