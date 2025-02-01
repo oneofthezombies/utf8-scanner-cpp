@@ -120,7 +120,7 @@ constexpr CodePoint CodePointFromBytes(const Byte* bytes,
   }
 }
 
-enum class ResultCode : std::uint8_t {
+enum class ScanResultCode : std::uint8_t {
   kValidCodePoint,
   kDisallowedStartByte,
   kStartWithContinuationByte,
@@ -154,7 +154,7 @@ class Scanner {
   Scanner(Scanner&&) = delete;
   Scanner& operator=(Scanner&&) = delete;
 
-  ResultCode Scan() noexcept {
+  ScanResultCode Scan() noexcept {
     const PeekResult maybe_b0 = Peek();
     if (!HasValue(maybe_b0)) {
       return GetError(maybe_b0);
@@ -164,7 +164,7 @@ class Scanner {
     Consume(b0);
 
     if (IsAscii(b0)) {
-      return ResultCode::kValidCodePoint;
+      return ScanResultCode::kValidCodePoint;
     }
 
     if (IsStartOf2Byte(b0)) {
@@ -180,14 +180,14 @@ class Scanner {
     }
 
     if (IsContinuation(b0)) {
-      return ResultCode::kStartWithContinuationByte;
+      return ScanResultCode::kStartWithContinuationByte;
     }
 
-    return ResultCode::kDisallowedStartByte;
+    return ScanResultCode::kDisallowedStartByte;
   }
 
  private:
-  ResultCode OnStartOf2Byte(const Byte b0) noexcept {
+  ScanResultCode OnStartOf2Byte(const Byte b0) noexcept {
     const PeekResult maybe_b1 = Peek();
     if (!HasValue(maybe_b1)) {
       return GetError(maybe_b1);
@@ -196,13 +196,13 @@ class Scanner {
     const Byte b1 = GetValue(maybe_b1);
     if (IsContinuation(b1)) {
       Consume(b1);
-      return ResultCode::kValidCodePoint;
+      return ScanResultCode::kValidCodePoint;
     }
 
-    return ResultCode::kIncomplete2Byte;
+    return ScanResultCode::kIncomplete2Byte;
   }
 
-  ResultCode OnStartOf3Byte(const Byte b0) noexcept {
+  ScanResultCode OnStartOf3Byte(const Byte b0) noexcept {
     const PeekResult maybe_b1 = Peek();
     if (!HasValue(maybe_b1)) {
       return GetError(maybe_b1);
@@ -211,12 +211,12 @@ class Scanner {
     const Byte b1 = GetValue(maybe_b1);
     if (IsOverlong3Byte(b0, b1)) {
       Consume(b1);
-      return ResultCode::kOverlong3Byte;
+      return ScanResultCode::kOverlong3Byte;
     }
 
     if (IsUtf16Surrogate(b0, b1)) {
       Consume(b1);
-      return ResultCode::kUtf16Surrogate;
+      return ScanResultCode::kUtf16Surrogate;
     }
 
     if (IsContinuation(b1)) {
@@ -230,14 +230,14 @@ class Scanner {
       const Byte b2 = GetValue(maybe_b2);
       if (IsContinuation(b2)) {
         Consume(b2);
-        return ResultCode::kValidCodePoint;
+        return ScanResultCode::kValidCodePoint;
       }
     }
 
-    return ResultCode::kIncomplete3Byte;
+    return ScanResultCode::kIncomplete3Byte;
   }
 
-  ResultCode OnStartOf4Byte(const Byte b0) noexcept {
+  ScanResultCode OnStartOf4Byte(const Byte b0) noexcept {
     const PeekResult maybe_b1 = Peek();
     if (!HasValue(maybe_b1)) {
       return GetError(maybe_b1);
@@ -246,12 +246,12 @@ class Scanner {
     const Byte b1 = GetValue(maybe_b1);
     if (IsOverlong4Byte(b0, b1)) {
       Consume(b1);
-      return ResultCode::kOverlong4Byte;
+      return ScanResultCode::kOverlong4Byte;
     }
 
     if (IsOutOfUnicodeRange(b0, b1)) {
       Consume(b1);
-      return ResultCode::kOutOfUnicodeRange;
+      return ScanResultCode::kOutOfUnicodeRange;
     }
 
     if (IsContinuation(b1)) {
@@ -274,16 +274,16 @@ class Scanner {
         const Byte b3 = GetValue(maybe_b3);
         if (IsContinuation(b3)) {
           Consume(b3);
-          return ResultCode::kValidCodePoint;
+          return ScanResultCode::kValidCodePoint;
         }
       }
     }
 
-    return ResultCode::kIncomplete4Byte;
+    return ScanResultCode::kIncomplete4Byte;
   }
 
   using PeekValue = std::istream::int_type;
-  using PeekResult = std::variant<PeekValue, ResultCode>;
+  using PeekResult = std::variant<PeekValue, ScanResultCode>;
 
   bool HasValue(const PeekResult& res) noexcept {
     return std::holds_alternative<PeekValue>(res);
@@ -293,8 +293,8 @@ class Scanner {
     return static_cast<Byte>(std::get<PeekValue>(res));
   }
 
-  ResultCode GetError(const PeekResult& res) noexcept {
-    return std::get<ResultCode>(res);
+  ScanResultCode GetError(const PeekResult& res) noexcept {
+    return std::get<ScanResultCode>(res);
   }
 
   PeekResult Peek() noexcept {
@@ -306,18 +306,18 @@ class Scanner {
     }
 
     if (stream_.eof()) {
-      return ResultCode::kStreamEof;
+      return ScanResultCode::kStreamEof;
     }
 
     if (stream_.bad()) {
-      return ResultCode::kStreamBad;
+      return ScanResultCode::kStreamBad;
     }
 
     if (stream_.fail()) {
-      return ResultCode::kStreamFail;
+      return ScanResultCode::kStreamFail;
     }
 
-    return ResultCode::kStreamUnexpected;
+    return ScanResultCode::kStreamUnexpected;
   }
 
   void Consume(const Byte byte) noexcept {
@@ -333,8 +333,8 @@ class Scanner {
   EncodedCodePoint& buffer_;
 };
 
-inline ResultCode Scan(std::istream& stream,
-                       EncodedCodePoint& buffer) noexcept {
+inline ScanResultCode Scan(std::istream& stream,
+                           EncodedCodePoint& buffer) noexcept {
   return Scanner(stream, buffer).Scan();
 }
 
