@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <variant>
 
@@ -506,6 +507,60 @@ constexpr std::optional<utf8_utils::CheckError> Check(
 constexpr std::optional<utf8_utils::CheckError> Check(
     std::string_view str) noexcept {
   return utf8_utils::Check(str.data(), str.size());
+}
+
+constexpr std::string ToLossy(const char* str, std::size_t len) noexcept {
+  std::string result;
+  while (len > 0) {
+    if (auto err = utf8_utils::Check(str, len); err) {
+      result.append(str, err->invalid_position);
+      result.append("�");
+      const std::size_t advance = err->invalid_position + err->invalid_length;
+      str += advance;
+      len -= advance;
+    } else {
+      result.append(str, len);
+      str += len;
+      len -= len;
+    }
+  }
+
+  return result;
+}
+
+constexpr std::string ToLossy(std::string_view str) noexcept {
+  return utf8_utils::ToLossy(str.data(), str.size());
+}
+
+constexpr std::optional<std::string> ToLossyIfInvalid(
+    const char* str, std::size_t len) noexcept {
+  std::optional<std::string> result;
+  while (len > 0) {
+    if (auto err = utf8_utils::Check(str, len); err) {
+      if (!result) {
+        result = std::make_optional("");
+      }
+
+      result->append(str, err->invalid_position);
+      result->append("�");
+      const std::size_t advance = err->invalid_position + err->invalid_length;
+      str += advance;
+      len -= advance;
+    } else {
+      if (result) {
+        result->append(str, len);
+        str += len;
+        len -= len;
+      }
+    }
+  }
+
+  return result;
+}
+
+constexpr std::optional<std::string> ToLossyIfInvalid(
+    std::string_view str) noexcept {
+  return utf8_utils::ToLossyIfInvalid(str.data(), str.size());
 }
 
 }  // namespace utf8_utils
