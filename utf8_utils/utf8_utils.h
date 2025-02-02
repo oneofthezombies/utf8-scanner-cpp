@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstdint>
 #include <optional>
+#include <string_view>
 #include <variant>
 
 namespace utf8_utils {
@@ -92,7 +93,7 @@ enum class ErrorCode : std::uint8_t {
   kUtf16Surrogate,
   kOverlongOf4Bytes,
   kOutOfUnicodeRange,
-  kNullBytesPtr,
+  kNullStringPtr,
   kInvalidBytesLength,
   kDisallowedFirstByte,
   kIncomplete2Bytes,
@@ -163,23 +164,23 @@ constexpr utf8_utils::TryResult TryToUtf32(const std::uint8_t b0,
 constexpr utf8_utils::TryResult TryToUtf32(const std::uint8_t b0,
                                            const std::uint8_t b1,
                                            const std::uint8_t b2) noexcept {
-  if (Utf8BytesLength(b0) != 3) {
+  if (utf8_utils::Utf8BytesLength(b0) != 3) {
     return utf8_utils::ErrorCode::kNotFirstOf3Bytes;
   }
 
-  if (IsOverlong3Byte(b0, b1)) {
+  if (utf8_utils::IsOverlong3Byte(b0, b1)) {
     return utf8_utils::ErrorCode::kOverlongOf3Bytes;
   }
 
-  if (IsUtf16Surrogate(b0, b1)) {
+  if (utf8_utils::IsUtf16Surrogate(b0, b1)) {
     return utf8_utils::ErrorCode::kUtf16Surrogate;
   }
 
-  if (!IsContinuation(b1)) {
+  if (!utf8_utils::IsContinuation(b1)) {
     return utf8_utils::ErrorCode::kNotSecondIsContinuation;
   }
 
-  if (!IsContinuation(b2)) {
+  if (!utf8_utils::IsContinuation(b2)) {
     return utf8_utils::ErrorCode::kNotThirdIsContinuation;
   }
 
@@ -190,48 +191,48 @@ constexpr utf8_utils::TryResult TryToUtf32(const std::uint8_t b0,
                                            const std::uint8_t b1,
                                            const std::uint8_t b2,
                                            const std::uint8_t b3) noexcept {
-  if (Utf8BytesLength(b0) != 4) {
+  if (utf8_utils::Utf8BytesLength(b0) != 4) {
     return utf8_utils::ErrorCode::kNotFirstOf4Bytes;
   }
 
-  if (IsOverlong4Byte(b0, b1)) {
+  if (utf8_utils::IsOverlong4Byte(b0, b1)) {
     return utf8_utils::ErrorCode::kOverlongOf4Bytes;
   }
 
-  if (IsOutOfUnicodeRange(b0, b1)) {
+  if (utf8_utils::IsOutOfUnicodeRange(b0, b1)) {
     return utf8_utils::ErrorCode::kOutOfUnicodeRange;
   }
 
-  if (!IsContinuation(b1)) {
+  if (!utf8_utils::IsContinuation(b1)) {
     return utf8_utils::ErrorCode::kNotSecondIsContinuation;
   }
 
-  if (!IsContinuation(b2)) {
+  if (!utf8_utils::IsContinuation(b2)) {
     return utf8_utils::ErrorCode::kNotThirdIsContinuation;
   }
 
-  if (!IsContinuation(b3)) {
+  if (!utf8_utils::IsContinuation(b3)) {
     return utf8_utils::ErrorCode::kNotFourthIsContinuation;
   }
 
   return utf8_utils::ToUtf32Unchecked(b0, b1, b2, b3);
 }
 
-constexpr utf8_utils::TryResult TryToUtf32(const std::uint8_t* bytes,
+constexpr utf8_utils::TryResult TryToUtf32(const char* str,
                                            const std::size_t len) noexcept {
-  if (bytes == nullptr) {
-    return utf8_utils::ErrorCode::kNullBytesPtr;
+  if (str == nullptr) {
+    return utf8_utils::ErrorCode::kNullStringPtr;
   }
 
   switch (len) {
     case 1:
-      return utf8_utils::TryToUtf32(bytes[0]);
+      return utf8_utils::TryToUtf32(str[0]);
     case 2:
-      return utf8_utils::TryToUtf32(bytes[0], bytes[1]);
+      return utf8_utils::TryToUtf32(str[0], str[1]);
     case 3:
-      return utf8_utils::TryToUtf32(bytes[0], bytes[1], bytes[2]);
+      return utf8_utils::TryToUtf32(str[0], str[1], str[2]);
     case 4:
-      return utf8_utils::TryToUtf32(bytes[0], bytes[1], bytes[2], bytes[3]);
+      return utf8_utils::TryToUtf32(str[0], str[1], str[2], str[3]);
     default:
       return utf8_utils::ErrorCode::kInvalidBytesLength;
   }
@@ -292,22 +293,22 @@ constexpr char32_t MustToUtf32(const std::uint8_t b0, const std::uint8_t b1,
   return utf8_utils::ToUtf32Unchecked(b0, b1, b2, b3);
 }
 
-constexpr char32_t MustToUtf32(const std::uint8_t* bytes,
+constexpr char32_t MustToUtf32(const char* str,
                                const std::size_t len) noexcept {
-  assert(bytes != nullptr && "Parameter `bytes` must not be nullptr.");
+  assert(str != nullptr && "Parameter `str` must not be nullptr.");
   assert((0 < len && len <= 4) &&
          "Parameter `len` must be greater than 0 and less than or "
          "4.");
 
   switch (len) {
     case 1:
-      return utf8_utils::MustToUtf32(bytes[0]);
+      return utf8_utils::MustToUtf32(str[0]);
     case 2:
-      return utf8_utils::MustToUtf32(bytes[0], bytes[1]);
+      return utf8_utils::MustToUtf32(str[0], str[1]);
     case 3:
-      return utf8_utils::MustToUtf32(bytes[0], bytes[1], bytes[2]);
+      return utf8_utils::MustToUtf32(str[0], str[1], str[2]);
     case 4:
-      return utf8_utils::MustToUtf32(bytes[0], bytes[1], bytes[2], bytes[3]);
+      return utf8_utils::MustToUtf32(str[0], str[1], str[2], str[3]);
     default:
       assert(false && "Parameter `len` must be 1, 2, 3, or 4.");
       return 0;
@@ -323,14 +324,14 @@ struct CheckError {
 namespace detail {
 
 constexpr std::optional<utf8_utils::CheckError> Check2Bytes(
-    const std::uint8_t* bytes, const std::size_t len, const std::size_t start,
+    const char* str, const std::size_t len, const std::size_t start,
     const std::uint8_t b0, std::size_t& i) noexcept {
   if (i >= len) {
     return utf8_utils::CheckError{utf8_utils::ErrorCode::kIncomplete2Bytes,
                                   start, i - start};
   }
 
-  const std::uint8_t b1 = bytes[i];
+  const std::uint8_t b1 = str[i];
   if (!utf8_utils::IsContinuation(b1)) {
     return utf8_utils::CheckError{
         utf8_utils::ErrorCode::kNotSecondIsContinuation, start, i - start};
@@ -341,14 +342,14 @@ constexpr std::optional<utf8_utils::CheckError> Check2Bytes(
 }
 
 constexpr std::optional<utf8_utils::CheckError> Check3Bytes(
-    const std::uint8_t* bytes, const std::size_t len, const std::size_t start,
+    const char* str, const std::size_t len, const std::size_t start,
     const std::uint8_t b0, std::size_t& i) noexcept {
   if (i >= len) {
     return utf8_utils::CheckError{utf8_utils::ErrorCode::kIncomplete3Bytes,
                                   start, i - start};
   }
 
-  const std::uint8_t b1 = bytes[i];
+  const std::uint8_t b1 = str[i];
   if (utf8_utils::IsOverlong3Byte(b0, b1)) {
     ++i;
     return utf8_utils::CheckError{utf8_utils::ErrorCode::kOverlongOf3Bytes,
@@ -372,7 +373,7 @@ constexpr std::optional<utf8_utils::CheckError> Check3Bytes(
                                   start, i - start};
   }
 
-  const std::uint8_t b2 = bytes[i];
+  const std::uint8_t b2 = str[i];
   if (!utf8_utils::IsContinuation(b2)) {
     return utf8_utils::CheckError{
         utf8_utils::ErrorCode::kNotThirdIsContinuation, start, i - start};
@@ -383,14 +384,14 @@ constexpr std::optional<utf8_utils::CheckError> Check3Bytes(
 }
 
 constexpr std::optional<utf8_utils::CheckError> Check4Bytes(
-    const std::uint8_t* bytes, const std::size_t len, const std::size_t start,
+    const char* str, const std::size_t len, const std::size_t start,
     const std::uint8_t b0, std::size_t& i) noexcept {
   if (i >= len) {
     return utf8_utils::CheckError{utf8_utils::ErrorCode::kIncomplete4Bytes,
                                   start, i - start};
   }
 
-  const std::uint8_t b1 = bytes[i];
+  const std::uint8_t b1 = str[i];
   if (utf8_utils::IsOverlong4Byte(b0, b1)) {
     ++i;
     return utf8_utils::CheckError{utf8_utils::ErrorCode::kOverlongOf4Bytes,
@@ -414,7 +415,7 @@ constexpr std::optional<utf8_utils::CheckError> Check4Bytes(
                                   start, i - start};
   }
 
-  const std::uint8_t b2 = bytes[i];
+  const std::uint8_t b2 = str[i];
   if (!utf8_utils::IsContinuation(b2)) {
     return utf8_utils::CheckError{
         utf8_utils::ErrorCode::kNotThirdIsContinuation, start, i - start};
@@ -426,7 +427,7 @@ constexpr std::optional<utf8_utils::CheckError> Check4Bytes(
                                   start, i - start};
   }
 
-  const std::uint8_t b3 = bytes[i];
+  const std::uint8_t b3 = str[i];
   if (!utf8_utils::IsContinuation(b3)) {
     return utf8_utils::CheckError{
         utf8_utils::ErrorCode::kNotFourthIsContinuation, start, i - start};
@@ -439,9 +440,9 @@ constexpr std::optional<utf8_utils::CheckError> Check4Bytes(
 }  // namespace detail
 
 constexpr std::optional<utf8_utils::CheckError> Check(
-    const std::uint8_t* bytes, const std::size_t len) noexcept {
-  if (bytes == nullptr) {
-    return utf8_utils::CheckError{utf8_utils::ErrorCode::kNullBytesPtr, 0, 0};
+    const char* str, const std::size_t len) noexcept {
+  if (str == nullptr) {
+    return utf8_utils::CheckError{utf8_utils::ErrorCode::kNullStringPtr, 0, 0};
   }
 
   if (len == 0) {
@@ -451,8 +452,8 @@ constexpr std::optional<utf8_utils::CheckError> Check(
   std::size_t i{};
   while (i < len) {
     const std::size_t start = i;
-    const std::uint8_t b0 = bytes[i++];
-    const std::uint8_t len = Utf8BytesLength(b0);
+    const std::uint8_t b0 = str[i++];
+    const std::uint8_t len = utf8_utils::Utf8BytesLength(b0);
 
     if (len == 0) {
       return utf8_utils::CheckError{utf8_utils::ErrorCode::kDisallowedFirstByte,
@@ -464,7 +465,7 @@ constexpr std::optional<utf8_utils::CheckError> Check(
     }
 
     if (len == 2) {
-      if (auto err = utf8_utils::detail::Check2Bytes(bytes, len, start, b0, i);
+      if (auto err = utf8_utils::detail::Check2Bytes(str, len, start, b0, i);
           err) {
         return err;
       }
@@ -473,7 +474,7 @@ constexpr std::optional<utf8_utils::CheckError> Check(
     }
 
     if (len == 3) {
-      if (auto err = utf8_utils::detail::Check3Bytes(bytes, len, start, b0, i);
+      if (auto err = utf8_utils::detail::Check3Bytes(str, len, start, b0, i);
           err) {
         return err;
       }
@@ -482,7 +483,7 @@ constexpr std::optional<utf8_utils::CheckError> Check(
     }
 
     if (len == 4) {
-      if (auto err = utf8_utils::detail::Check4Bytes(bytes, len, start, b0, i);
+      if (auto err = utf8_utils::detail::Check4Bytes(str, len, start, b0, i);
           err) {
         return err;
       }
@@ -492,6 +493,11 @@ constexpr std::optional<utf8_utils::CheckError> Check(
   }
 
   return std::nullopt;
+}
+
+constexpr std::optional<utf8_utils::CheckError> Check(
+    std::string_view str) noexcept {
+  return utf8_utils::Check(str.data(), str.size());
 }
 
 }  // namespace utf8_utils
