@@ -238,6 +238,10 @@ constexpr utf8_utils::TryResult TryToUtf32(const char* str,
   }
 }
 
+constexpr utf8_utils::TryResult TryToUtf32(std::string_view str) noexcept {
+  return utf8_utils::TryToUtf32(str.data(), str.size());
+}
+
 constexpr char32_t MustToUtf32(const std::uint8_t byte) noexcept {
   assert(utf8_utils::Utf8BytesLength(byte) == 1 &&
          "Parameter `byte` must be a 1-byte UTF-8 character.");
@@ -313,6 +317,10 @@ constexpr char32_t MustToUtf32(const char* str,
       assert(false && "Parameter `len` must be 1, 2, 3, or 4.");
       return 0;
   }
+}
+
+constexpr char32_t MustToUtf32(std::string_view str) noexcept {
+  return utf8_utils::MustToUtf32(str.data(), str.size());
 }
 
 struct CheckError {
