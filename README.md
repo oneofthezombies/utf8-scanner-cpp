@@ -1,6 +1,6 @@
-# UTF-8 Scanner C++
+# UTF-8 Utils C++
 
-📠 A lightweight, header-only UTF-8 scanner designed for lexers.
+📠 A lightweight, header-only UTF-8 utilities designed for lexers.
 
 ## Why I Created This?
 
